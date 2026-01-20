@@ -33,10 +33,13 @@ A comprehensive NestJS backend API with Role-Based Access Control (RBAC) for emp
 npm install
 
 # Generate Prisma Client
-npx prisma generate
+npm run prisma:generate
 
 # Run database migrations
-npx prisma migrate dev --name init
+npm run prisma:migrate
+
+# Seed the database
+npm run prisma:seed
 ```
 
 ## Configuration
@@ -94,7 +97,7 @@ npx prisma migrate status
 Seed the database with default data for testing and development:
 
 ```bash
-npx prisma db seed
+npm run prisma:seed
 ```
 
 ### Default Seed Data
