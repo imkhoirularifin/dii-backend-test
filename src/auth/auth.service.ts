@@ -71,7 +71,7 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string,
   ): Promise<AuthResponseDto> {
-    const { username, password, roleId } = loginDto;
+    const { username, password } = loginDto;
 
     // Find user by username or email
     const user = await this.prisma.user.findFirst({
@@ -105,21 +105,10 @@ export class AuthService {
       );
     }
 
-    // Determine which role to use
-    let selectedUserRole: UserRole;
-    if (roleId) {
-      // Find specific role
-      const foundRole = user.userRoles.find((ur) => ur.roleId === roleId);
-      if (!foundRole) {
-        throw new BadRequestException('Invalid role selected');
-      }
-      selectedUserRole = foundRole as UserRole;
-    } else {
-      // Use default role or first role
-      const defaultRole =
-        user.userRoles.find((ur) => ur.isDefault) || user.userRoles[0];
-      selectedUserRole = defaultRole as UserRole;
-    }
+    // Always use default role or first role
+    const defaultRole =
+      user.userRoles.find((ur) => ur.isDefault) || user.userRoles[0];
+    const selectedUserRole = defaultRole as UserRole;
 
     const role = selectedUserRole.role;
 
@@ -268,6 +257,82 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async switchRole(
+    userId: string,
+    roleId: string,
+  ): Promise<{ accessToken: string }> {
+    // Fetch user with their roles
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, isActive: true },
+      include: {
+        userRoles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Validate the roleId exists in user's assigned roles
+    const userRole = user.userRoles.find((ur) => ur.roleId === roleId);
+    if (!userRole) {
+      throw new BadRequestException('Role not assigned to user');
+    }
+
+    // Check role is active
+    if (!userRole.role.isActive) {
+      throw new BadRequestException('Selected role is inactive');
+    }
+
+    // Get current active session (most recent valid session)
+    const session = await this.prisma.userSession.findFirst({
+      where: {
+        userId,
+        expiresAt: {
+          gt: new Date(),
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (!session) {
+      throw new UnauthorizedException('No active session found');
+    }
+
+    // Generate new access token with new role
+    const signOptions: JwtSignOptions = {
+      secret: this.configService.get<string>('JWT_SECRET') || 'default-secret',
+    };
+
+    const accessToken = this.jwtService.sign(
+      {
+        sub: user.id,
+        username: user.username,
+        email: user.email,
+        roleId: userRole.role.id,
+        roleCode: userRole.role.roleCode,
+      },
+      signOptions,
+    );
+
+    // Update session with new token and roleId (keep same refreshToken)
+    await this.prisma.userSession.update({
+      where: { id: session.id },
+      data: {
+        token: accessToken,
+        roleId: userRole.role.id,
+      },
+    });
+
+    return { accessToken };
   }
 
   private generateTokens(

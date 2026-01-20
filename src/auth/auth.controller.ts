@@ -19,6 +19,7 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { SwitchRoleDto } from './dto/switch-role.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
@@ -82,6 +83,25 @@ export class AuthController {
     const token = req.get('authorization')?.replace('Bearer ', '') || '';
     await this.authService.logout(user.userId, token);
     return { message: 'Logout successful' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('switch-role')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({ summary: 'Switch active user role' })
+  @ApiResponse({ status: 200, description: 'Role switched successfully' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid role or role not assigned to user',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async switchRole(
+    @CurrentUser() user: CurrentUserData,
+    @Body() switchRoleDto: SwitchRoleDto,
+  ): Promise<{ accessToken: string }> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return
+    return await this.authService.switchRole(user.userId, switchRoleDto.roleId);
   }
 
   @UseGuards(JwtAuthGuard)
